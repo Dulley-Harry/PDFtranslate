@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 import shlex
 import sys
+import tempfile
 import unittest
 
 from pdftranslate.pdf_runner import PDFTranslationResult
+from pdftranslate.pdf_runner import _resolve_output_path
 from pdftranslate.pdf_runner import build_wrapper_command
 
 
@@ -32,6 +35,20 @@ class WrapperCommandTests(unittest.TestCase):
         self.assertIn("/opt/codex bin/codex", parts)
         self.assertIn("--model", parts)
         self.assertIn("example-model", parts)
+
+
+class OutputPathTests(unittest.TestCase):
+    def test_relative_output_is_resolved_under_output_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir).resolve()
+            resolved = _resolve_output_path("paper-dual.pdf", output_dir)
+            self.assertEqual(resolved, str((output_dir / "paper-dual.pdf").resolve()))
+
+    def test_absolute_output_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            absolute = (Path(temp_dir) / "paper-mono.pdf").resolve()
+            resolved = _resolve_output_path(absolute, Path("elsewhere"))
+            self.assertEqual(resolved, str(absolute))
 
 
 class ResultContractTests(unittest.TestCase):

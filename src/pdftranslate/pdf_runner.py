@@ -97,7 +97,7 @@ def build_settings(
         timeout=codex_timeout,
     )
 
-    # PDF2zh invokes the configured CLI once per translation unit.  Phase 1 is
+    # PDF2zh invokes the configured CLI once per translation unit. Phase 1 is
     # deliberately single-worker to avoid multiplying Codex sessions and usage.
     translation = TranslationSettings(
         lang_in="en",
@@ -148,6 +148,16 @@ def _format_progress(event: dict[str, Any]) -> str | None:
     return str(stage)
 
 
+def _resolve_output_path(value: Any, output_dir: Path) -> str | None:
+    """Resolve PDF2zh output paths relative to the configured output directory."""
+    if not value:
+        return None
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute():
+        path = output_dir / path
+    return str(path.resolve())
+
+
 async def translate_pdf(
     input_pdf: Path,
     *,
@@ -163,6 +173,7 @@ async def translate_pdf(
     debug: bool = False,
 ) -> PDFTranslationResult:
     """Translate one PDF and return produced output paths."""
+    input_pdf = input_pdf.expanduser().resolve()
     if not input_pdf.is_file() or input_pdf.suffix.lower() != ".pdf":
         raise PDFRunnerError(f"Input PDF does not exist or is not a PDF: {input_pdf}")
     if mode not in {"dual", "mono", "both"}:
@@ -170,6 +181,7 @@ async def translate_pdf(
     if not 1 <= codex_timeout <= 270:
         raise PDFRunnerError("codex timeout must be between 1 and 270 seconds")
 
+    output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     settings = build_settings(
         output_dir=output_dir,
@@ -207,9 +219,9 @@ async def translate_pdf(
     mono = getattr(result, "mono_pdf_path", None)
     dual = getattr(result, "dual_pdf_path", None)
     return PDFTranslationResult(
-        input_pdf=str(input_pdf.resolve()),
-        mono_pdf=str(Path(mono).resolve()) if mono else None,
-        dual_pdf=str(Path(dual).resolve()) if dual else None,
+        input_pdf=str(input_pdf),
+        mono_pdf=_resolve_output_path(mono, output_dir),
+        dual_pdf=_resolve_output_path(dual, output_dir),
     )
 
 
