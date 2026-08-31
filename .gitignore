@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+
+# Local configuration and credentials
+.env
+.env.*
+*.key
+*.pem
+config.local.*
+
+# Codex authentication must never be vendored
+.codex/
+auth.json
+
+# Translation inputs / outputs
+*.pdf
+translated/
+jobs/
+cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
