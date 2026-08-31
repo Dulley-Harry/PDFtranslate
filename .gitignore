@@ -8,6 +8,11 @@ dist/
 build/
 .pytest_cache/
 
+# Node / generated plugin bundles
+node_modules/
+adapters/obsidian/main.js
+npm-debug.log*
+
 # Local configuration and credentials
 .env
 .env.*

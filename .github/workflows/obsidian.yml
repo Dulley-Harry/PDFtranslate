@@ -1,0 +1,37 @@
+name: Obsidian adapter
+
+on:
+  push:
+    paths:
+      - "adapters/obsidian/**"
+      - ".github/workflows/obsidian.yml"
+  pull_request:
+    paths:
+      - "adapters/obsidian/**"
+      - ".github/workflows/obsidian.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        working-directory: adapters/obsidian
+        run: npm install --no-audit --no-fund
+      - name: Build plugin
+        working-directory: adapters/obsidian
+        run: npm run build
+      - name: Upload development plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDFtranslate-obsidian
+          path: |
+            adapters/obsidian/main.js
+            adapters/obsidian/manifest.json
+          if-no-files-found: error
