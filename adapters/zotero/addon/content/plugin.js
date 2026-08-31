@@ -2,7 +2,11 @@
   "use strict";
 
   const PREF_PREFIX = "extensions.pdftranslate.";
-  const TRANSLATED_PREFIXES = ["[PDFtranslate 双语]", "[PDFtranslate 中文]", "[PDFtranslate]"];
+  const TRANSLATED_PREFIXES = [
+    "[PDFtranslate 双语]",
+    "[PDFtranslate 中文]",
+    "[PDFtranslate]",
+  ];
 
   class PDFtranslateZoteroPlugin {
     constructor({ id, version, rootURI }) {
@@ -18,9 +22,7 @@
     async startup() {
       await Zotero.initializationPromise;
       this.registerMenu();
-      for (const window of Zotero.getMainWindows()) {
-        this.onMainWindowLoad(window);
-      }
+      for (const window of Zotero.getMainWindows()) this.onMainWindowLoad(window);
       Zotero.debug(`[PDFtranslate] Zotero adapter ${this.version} started`);
     }
 
@@ -35,9 +37,7 @@
         Zotero.MenuManager.unregisterMenu(this.menuRegistrationID);
       }
       this.menuRegistrationID = null;
-      for (const window of Zotero.getMainWindows()) {
-        this.onMainWindowUnload(window);
-      }
+      for (const window of Zotero.getMainWindows()) this.onMainWindowUnload(window);
     }
 
     onMainWindowLoad(window) {
@@ -49,8 +49,7 @@
     }
 
     onMainWindowUnload(window) {
-      const link = window.document?.querySelector('link[href="pdftranslate.ftl"]');
-      link?.remove();
+      window.document?.querySelector('link[href="pdftranslate.ftl"]')?.remove();
     }
 
     registerMenu() {
@@ -91,16 +90,17 @@
         const value = Zotero.Prefs.get(PREF_PREFIX + name, true);
         return value === undefined || value === null ? fallback : value;
       };
+
       let executable = String(read("executablePath", "pdftranslate-pdf")).trim();
       try {
-        const fromEnvironment = Services.env.get("PDFTRANSLATE_PDF_EXECUTABLE");
-        if (fromEnvironment) executable = fromEnvironment.trim();
+        const envValue = Services.env.get("PDFTRANSLATE_PDF_EXECUTABLE");
+        if (envValue) executable = envValue.trim();
       } catch (_error) {}
 
       let mode = String(read("mode", "dual")).trim().toLowerCase();
       try {
-        const fromEnvironment = Services.env.get("PDFTRANSLATE_OUTPUT_MODE");
-        if (fromEnvironment) mode = fromEnvironment.trim().toLowerCase();
+        const envValue = Services.env.get("PDFTRANSLATE_OUTPUT_MODE");
+        if (envValue) mode = envValue.trim().toLowerCase();
       } catch (_error) {}
       if (!["dual", "mono", "both"].includes(mode)) mode = "dual";
 
@@ -113,21 +113,34 @@
 
     async translateItems(selectedItems) {
       if (this.busy) {
-        this.alert(this.text("已有 PDFtranslate 任务正在运行。", "A PDFtranslate job is already running."));
+        this.alert(
+          this.text(
+            "已有 PDFtranslate 任务正在运行。",
+            "A PDFtranslate job is already running.",
+          ),
+        );
         return;
       }
 
       const config = this.getConfig();
       const targets = await this.collectTargets(selectedItems);
       if (!targets.length) {
-        this.alert(this.text("没有找到可翻译的本地 PDF。", "No local PDF was found to translate."));
+        this.alert(
+          this.text(
+            "没有找到可翻译的本地 PDF。",
+            "No local PDF was found to translate.",
+          ),
+        );
         return;
       }
 
       this.busy = true;
       const progress = new Zotero.ProgressWindow({ closeOnClick: false });
       progress.changeHeadline("PDFtranslate");
-      const itemProgress = new progress.ItemProgress(null, this.text("准备翻译……", "Preparing translation…"));
+      const itemProgress = new progress.ItemProgress(
+        this.rootURI + "content/icon.svg",
+        this.text("准备翻译……", "Preparing translation…"),
+      );
       itemProgress.setProgress(0);
       progress.show();
 
@@ -145,7 +158,11 @@
           try {
             const imported = await this.translateOne(target, config);
             completed += imported.length;
-            if (config.openAfterTranslation && targets.length === 1 && imported.length) {
+            if (
+              config.openAfterTranslation &&
+              targets.length === 1 &&
+              imported.length
+            ) {
               await Zotero.getActiveZoteroPane()?.viewAttachment(imported[0].id);
             }
           } catch (error) {
@@ -163,14 +180,15 @@
               `${completed} attachment(s) created; ${failures.length} item(s) failed`,
             ),
           );
-          for (const failure of failures.slice(0, 5)) {
-            progress.addDescription(failure);
-          }
+          for (const failure of failures.slice(0, 5)) progress.addDescription(failure);
           progress.startCloseTimer(12000, true);
         } else {
           itemProgress.setProgress(100);
           itemProgress.setText(
-            this.text(`翻译完成，共生成 ${completed} 个附件`, `Translation complete: ${completed} attachment(s)`),
+            this.text(
+              `翻译完成，共生成 ${completed} 个附件`,
+              `Translation complete: ${completed} attachment(s)`,
+            ),
           );
           progress.startCloseTimer(5000, true);
         }
@@ -257,7 +275,11 @@
         if (exitCode !== 0) {
           const detail = this.tail(stderr || stdout, 2500);
           throw new Error(
-            detail || this.text(`PDFtranslate 退出码 ${exitCode}`, `PDFtranslate exited with code ${exitCode}`),
+            detail ||
+              this.text(
+                `PDFtranslate 退出码 ${exitCode}`,
+                `PDFtranslate exited with code ${exitCode}`,
+              ),
           );
         }
 
@@ -265,7 +287,12 @@
         try {
           result = JSON.parse(stdout.trim());
         } catch (_error) {
-          throw new Error(this.text("PDFtranslate 返回的结果不是有效 JSON。", "PDFtranslate returned invalid JSON."));
+          throw new Error(
+            this.text(
+              "PDFtranslate 返回的结果不是有效 JSON。",
+              "PDFtranslate returned invalid JSON.",
+            ),
+          );
         }
 
         const outputs = [];
@@ -276,13 +303,20 @@
           outputs.push({ path: result.mono_pdf, kind: "mono" });
         }
         if (!outputs.length) {
-          throw new Error(this.text("没有生成可导入的 PDF。", "No translated PDF was produced."));
+          throw new Error(
+            this.text("没有生成可导入的 PDF。", "No translated PDF was produced."),
+          );
         }
 
         const imported = [];
         for (const output of outputs) {
           if (!(await ioUtils.exists(output.path))) {
-            throw new Error(this.text("翻译结果文件不存在。", "Translated output file does not exist."));
+            throw new Error(
+              this.text(
+                "翻译结果文件不存在。",
+                "Translated output file does not exist.",
+              ),
+            );
           }
           const title =
             output.kind === "dual"
@@ -349,11 +383,18 @@
     async resolveCommand(value) {
       const command = String(value || "").trim();
       if (!command) {
-        throw new Error(this.text("PDFtranslate 可执行文件路径为空。", "PDFtranslate executable is empty."));
+        throw new Error(
+          this.text(
+            "PDFtranslate 可执行文件路径为空。",
+            "PDFtranslate executable is empty.",
+          ),
+        );
       }
       if (this.pathUtils().isAbsolute(command)) {
         if (await this.ioUtils().exists(command)) return command;
-        throw new Error(this.text(`找不到 ${command}`, `Executable not found: ${command}`));
+        throw new Error(
+          this.text(`找不到 ${command}`, `Executable not found: ${command}`),
+        );
       }
       try {
         return await this.subprocess().pathSearch(command);
@@ -369,7 +410,9 @@
 
     subprocess() {
       if (!this._subprocessModule) {
-        const module = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+        const module = ChromeUtils.importESModule(
+          "resource://gre/modules/Subprocess.sys.mjs",
+        );
         this._subprocessModule = module.Subprocess || module.default || module;
       }
       return this._subprocessModule;
@@ -377,12 +420,16 @@
 
     pathUtils() {
       if (root.PathUtils) return root.PathUtils;
-      return ChromeUtils.importESModule("resource://gre/modules/PathUtils.sys.mjs").PathUtils;
+      return ChromeUtils.importESModule(
+        "resource://gre/modules/PathUtils.sys.mjs",
+      ).PathUtils;
     }
 
     ioUtils() {
       if (root.IOUtils) return root.IOUtils;
-      return ChromeUtils.importESModule("resource://gre/modules/IOUtils.sys.mjs").IOUtils;
+      return ChromeUtils.importESModule(
+        "resource://gre/modules/IOUtils.sys.mjs",
+      ).IOUtils;
     }
 
     exitCode(waitResult) {
