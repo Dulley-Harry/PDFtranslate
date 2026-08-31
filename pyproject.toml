@@ -4,17 +4,23 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdftranslate"
-version = "0.0.1"
+version = "0.1.0"
 description = "Universal local PDF translation bridge with a Codex CLI backend"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 authors = [
   { name = "Dulley-Harry" }
 ]
 dependencies = []
 
+[project.optional-dependencies]
+pdf = [
+  "pdf2zh-next>=2.9.0,<3.0",
+]
+
 [project.scripts]
 pdftranslate-codex = "pdftranslate.codex_cli:main"
+pdftranslate-pdf = "pdftranslate.pdf_runner:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdftranslate"]
