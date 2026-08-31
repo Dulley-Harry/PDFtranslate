@@ -72,10 +72,10 @@ function isInside(basePath: string, candidatePath: string): boolean {
 }
 
 export default class PDFtranslatePlugin extends Plugin {
-  settings: PDFtranslateSettings = DEFAULT_SETTINGS;
+  override settings: PDFtranslateSettings = DEFAULT_SETTINGS;
   private busy = false;
 
-  async onload(): Promise<void> {
+  override async onload(): Promise<void> {
     await this.loadSettings();
 
     this.addCommand({
@@ -235,7 +235,7 @@ class PDFtranslateSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
-  display(): void {
+  override display(): void {
     const { containerEl } = this;
     containerEl.empty();
 
