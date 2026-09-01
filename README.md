@@ -95,7 +95,7 @@ Default bridge flow:
 PDF2zh workers (default 8)
         -> 127.0.0.1 local bridge
         -> batching window (default 100 ms)
-        -> up to 8 segments / Codex batch
+        -> up to 4 segments / Codex batch
         -> one Codex worker by default
 ```
 
@@ -103,7 +103,7 @@ Useful controls:
 
 ```bash
 pdftranslate-pdf paper.pdf \
-  --batch-size 8 \
+  --batch-size 4 \
   --batch-window-ms 100 \
   --bridge-workers 1 \
   --pdf-workers 8

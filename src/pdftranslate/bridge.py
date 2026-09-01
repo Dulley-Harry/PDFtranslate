@@ -27,11 +27,11 @@ from typing import Any, Protocol
 import urllib.parse
 import uuid
 
-from .codex_cli import CodexAdapterError, find_codex
+from .codex_cli import CodexAdapterError, codex_subprocess_env, find_codex
 
 
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
-DEFAULT_BATCH_SIZE = 8
+DEFAULT_BATCH_SIZE = 4
 DEFAULT_BATCH_WINDOW_MS = 100
 DEFAULT_CODEX_TIMEOUT = 240
 
@@ -279,6 +279,7 @@ class CodexBatcher:
                     timeout=self.timeout,
                     check=False,
                     cwd=workdir,
+                    env=codex_subprocess_env(),
                 )
             except subprocess.TimeoutExpired as exc:
                 raise BridgeError(

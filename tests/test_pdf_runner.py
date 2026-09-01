@@ -1,17 +1,27 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+import json
 from pathlib import Path
 import shlex
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
+from pdftranslate.bridge import DEFAULT_BATCH_SIZE
 from pdftranslate.pdf_runner import PDFTranslationResult
 from pdftranslate.pdf_runner import _resolve_output_path
 from pdftranslate.pdf_runner import build_wrapper_command
+from pdftranslate.pdf_runner import main
+from pdftranslate.pdf_runner import parse_args
 
 
 class WrapperCommandTests(unittest.TestCase):
+    def test_pdf_runner_uses_the_safe_bridge_batch_default(self) -> None:
+        self.assertEqual(parse_args([]).batch_size, DEFAULT_BATCH_SIZE)
+
     def test_wrapper_runs_same_python_module(self) -> None:
         command = build_wrapper_command(
             codex_path=None,
@@ -60,6 +70,26 @@ class ResultContractTests(unittest.TestCase):
         )
         self.assertEqual(result.dual_pdf, "paper-dual.pdf")
         self.assertIsNone(result.mono_pdf)
+
+    def test_json_mode_keeps_dependency_noise_off_stdout(self) -> None:
+        async def fake_translate(*_args, **_kwargs):
+            print("dependency progress")
+            return PDFTranslationResult(
+                input_pdf="paper.pdf",
+                mono_pdf=None,
+                dual_pdf="paper-dual.pdf",
+            )
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch("pdftranslate.pdf_runner.translate_pdf", new=fake_translate):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(["paper.pdf", "--json"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["dual_pdf"], "paper-dual.pdf")
+        self.assertNotIn("dependency progress", stdout.getvalue())
+        self.assertIn("dependency progress", stderr.getvalue())
 
 
 if __name__ == "__main__":

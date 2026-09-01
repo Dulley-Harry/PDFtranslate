@@ -9,6 +9,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "adapters" / "zotero" / "addon"
+UPDATES = ROOT / "adapters" / "zotero" / "updates.json"
 
 
 class ZoteroAdapterTests(unittest.TestCase):
@@ -17,8 +18,18 @@ class ZoteroAdapterTests(unittest.TestCase):
         zotero = manifest["applications"]["zotero"]
         self.assertEqual(manifest["manifest_version"], 2)
         self.assertEqual(zotero["id"], "pdftranslate@dulley-harry.github.io")
+        self.assertEqual(
+            zotero["update_url"],
+            "https://raw.githubusercontent.com/Dulley-Harry/PDFtranslate/main/"
+            "adapters/zotero/updates.json",
+        )
         self.assertEqual(zotero["strict_min_version"], "8.0")
         self.assertEqual(zotero["strict_max_version"], "9.0.*")
+
+    def test_update_manifest_tracks_the_same_plugin_id(self) -> None:
+        updates = json.loads(UPDATES.read_text(encoding="utf-8"))
+        addon = updates["addons"]["pdftranslate@dulley-harry.github.io"]
+        self.assertEqual(addon["updates"], [])
 
     def test_adapter_calls_only_local_pdftranslate_cli(self) -> None:
         source = (ADDON / "content" / "plugin.js").read_text(encoding="utf-8")

@@ -29,6 +29,80 @@ TRANSLATION_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+
+
+def _read_windows_proxy() -> str | None:
+    """Return the enabled per-user WinINET proxy without changing system state."""
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            enabled = int(winreg.QueryValueEx(key, "ProxyEnable")[0])
+            server = str(winreg.QueryValueEx(key, "ProxyServer")[0]).strip()
+    except (OSError, TypeError, ValueError):
+        return None
+    return server if enabled and server else None
+
+
+def _proxy_url(value: str, *, scheme: str = "http") -> str:
+    value = value.strip()
+    return value if "://" in value else f"{scheme}://{value}"
+
+
+def _parse_windows_proxy(proxy_server: str) -> dict[str, str]:
+    """Convert WinINET's single or protocol-specific proxy format to env vars."""
+    if "=" not in proxy_server:
+        proxy = _proxy_url(proxy_server)
+        return {
+            "HTTP_PROXY": proxy,
+            "HTTPS_PROXY": proxy,
+            "ALL_PROXY": proxy,
+        }
+
+    configured: dict[str, str] = {}
+    for entry in proxy_server.split(";"):
+        protocol, separator, value = entry.partition("=")
+        if separator and value.strip():
+            configured[protocol.strip().lower()] = value.strip()
+
+    http = configured.get("http") or configured.get("https")
+    https = configured.get("https") or configured.get("http")
+    socks = configured.get("socks")
+    result: dict[str, str] = {}
+    if http:
+        result["HTTP_PROXY"] = _proxy_url(http)
+    if https:
+        result["HTTPS_PROXY"] = _proxy_url(https)
+    if socks:
+        result["ALL_PROXY"] = _proxy_url(socks, scheme="socks5")
+    elif https or http:
+        result["ALL_PROXY"] = _proxy_url(https or http or "")
+    return result
+
+
+def codex_subprocess_env() -> dict[str, str]:
+    """Build a child environment that honors an enabled Windows system proxy."""
+    env = os.environ.copy()
+    if any(str(env.get(key, "")).strip() for key in _PROXY_ENV_KEYS):
+        return env
+    proxy_server = _read_windows_proxy()
+    if proxy_server:
+        env.update(_parse_windows_proxy(proxy_server))
+    return env
+
 
 def find_codex(explicit: str | None = None) -> str:
     """Locate Codex without reading or copying Codex authentication files."""
@@ -175,6 +249,7 @@ def run_codex(
                 timeout=timeout,
                 check=False,
                 cwd=workdir,
+                env=codex_subprocess_env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise CodexAdapterError(

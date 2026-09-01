@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import redirect_stdout
 from dataclasses import asdict, dataclass
 import importlib.metadata
 import json
@@ -13,7 +14,12 @@ import shlex
 import sys
 from typing import Any
 
-from .bridge import BridgeError, start_bridge
+from .bridge import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_BATCH_WINDOW_MS,
+    BridgeError,
+    start_bridge,
+)
 from .codex_cli import CodexAdapterError, codex_status, find_codex
 
 
@@ -232,8 +238,8 @@ async def translate_pdf(
     codex_path: str | None = None,
     model: str | None = None,
     codex_timeout: int = 240,
-    batch_size: int = 8,
-    batch_window_ms: int = 100,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    batch_window_ms: int = DEFAULT_BATCH_WINDOW_MS,
     bridge_workers: int = 1,
     pdf_workers: int = 8,
     ignore_cache: bool = False,
@@ -348,8 +354,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codex-path")
     parser.add_argument("--model", default=os.environ.get("PDFTRANSLATE_CODEX_MODEL") or None)
     parser.add_argument("--codex-timeout", type=int, default=240)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--batch-window-ms", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument(
+        "--batch-window-ms", type=int, default=DEFAULT_BATCH_WINDOW_MS
+    )
     parser.add_argument("--bridge-workers", type=int, default=1)
     parser.add_argument("--pdf-workers", type=int, default=8)
     parser.add_argument("--ignore-cache", action="store_true")
@@ -370,26 +378,31 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if status.get("codex_authenticated") and status.get("pdf2zh_next_available") else 2
         if args.input_pdf is None:
             raise PDFRunnerError("input_pdf is required unless --check is used")
-        result = asyncio.run(
-            translate_pdf(
-                args.input_pdf,
-                output_dir=args.output_dir,
-                mode=args.mode,
-                pages=args.pages,
-                transport=args.transport,
-                codex_path=args.codex_path,
-                model=args.model,
-                codex_timeout=args.codex_timeout,
-                batch_size=args.batch_size,
-                batch_window_ms=args.batch_window_ms,
-                bridge_workers=args.bridge_workers,
-                pdf_workers=args.pdf_workers,
-                ignore_cache=args.ignore_cache,
-                enhance_compatibility=args.enhance_compatibility,
-                translate_table_text=not args.no_table_text,
-                debug=args.debug,
-            )
+        translation = translate_pdf(
+            args.input_pdf,
+            output_dir=args.output_dir,
+            mode=args.mode,
+            pages=args.pages,
+            transport=args.transport,
+            codex_path=args.codex_path,
+            model=args.model,
+            codex_timeout=args.codex_timeout,
+            batch_size=args.batch_size,
+            batch_window_ms=args.batch_window_ms,
+            bridge_workers=args.bridge_workers,
+            pdf_workers=args.pdf_workers,
+            ignore_cache=args.ignore_cache,
+            enhance_compatibility=args.enhance_compatibility,
+            translate_table_text=not args.no_table_text,
+            debug=args.debug,
         )
+        if args.json:
+            # Keep the adapter contract machine-readable even when PDF2zh or a
+            # dependency writes progress and warnings to stdout.
+            with redirect_stdout(sys.stderr):
+                result = asyncio.run(translation)
+        else:
+            result = asyncio.run(translation)
         payload = asdict(result)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))

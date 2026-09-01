@@ -8,6 +8,7 @@
   "applications": {
     "zotero": {
       "id": "pdftranslate@dulley-harry.github.io",
+      "update_url": "https://raw.githubusercontent.com/Dulley-Harry/PDFtranslate/main/adapters/zotero/updates.json",
       "strict_min_version": "8.0",
       "strict_max_version": "9.0.*"
     }
