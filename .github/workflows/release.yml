@@ -1,0 +1,268 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "RELEASE_VERSION"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pdftranslate-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Read release version
+        shell: bash
+        run: |
+          VERSION="$(tr -d '[:space:]' < RELEASE_VERSION)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid RELEASE_VERSION: $VERSION" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=v$VERSION" >> "$GITHUB_ENV"
+
+      - name: Refuse duplicate release
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists" >&2
+            exit 1
+          fi
+
+      - name: Synchronize version metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+
+          pyproject = Path("pyproject.toml")
+          text = pyproject.read_text(encoding="utf-8")
+          text, count = re.subn(
+              r'(?m)^version = "[^"]+"$',
+              f'version = "{version}"',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not update pyproject.toml version")
+          pyproject.write_text(text, encoding="utf-8")
+
+          init_file = Path("src/pdftranslate/__init__.py")
+          text = init_file.read_text(encoding="utf-8")
+          text, count = re.subn(
+              r'(?m)^__version__ = "[^"]+"$',
+              f'__version__ = "{version}"',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not update __version__")
+          init_file.write_text(text, encoding="utf-8")
+
+          for filename in (
+              "adapters/zotero/addon/manifest.json",
+              "adapters/obsidian/manifest.json",
+          ):
+              path = Path(filename)
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              payload["version"] = version
+              path.write_text(
+                  json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                  encoding="utf-8",
+              )
+          PY
+
+          cd adapters/obsidian
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test Python 3.11
+        run: |
+          python -m pip install -e .
+          python -m unittest discover -s tests -v
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test Python 3.12
+        run: |
+          python -m pip install -e .
+          python -m unittest discover -s tests -v
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Test Python 3.13
+        run: |
+          python -m pip install -e .
+          python -m unittest discover -s tests -v
+
+      - name: Build Zotero XPI
+        run: python scripts/build_zotero_xpi.py
+
+      - name: Build Obsidian plugin
+        working-directory: adapters/obsidian
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Build Python distributions
+        run: |
+          python -m pip install build
+          mkdir -p release
+          python -m build --outdir release
+
+      - name: Package desktop adapters
+        shell: bash
+        run: |
+          cp dist/PDFtranslate-zotero.xpi release/PDFtranslate-zotero.xpi
+          cd adapters/obsidian
+          zip -j ../../release/PDFtranslate-obsidian.zip main.js manifest.json
+
+      - name: Generate Zotero update manifest
+        shell: bash
+        run: |
+          XPI_HASH="$(sha256sum release/PDFtranslate-zotero.xpi | awk '{print $1}')"
+          export XPI_HASH
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          digest = os.environ["XPI_HASH"]
+          manifest = json.loads(
+              Path("adapters/zotero/addon/manifest.json").read_text(encoding="utf-8")
+          )
+          zotero = manifest["applications"]["zotero"]
+          plugin_id = zotero["id"]
+          payload = {
+              "addons": {
+                  plugin_id: {
+                      "updates": [
+                          {
+                              "version": version,
+                              "update_link": (
+                                  "https://github.com/Dulley-Harry/PDFtranslate/"
+                                  f"releases/download/v{version}/PDFtranslate-zotero.xpi"
+                              ),
+                              "update_hash": f"sha256:{digest}",
+                              "applications": {
+                                  "zotero": {
+                                      "strict_min_version": zotero["strict_min_version"],
+                                      "strict_max_version": zotero["strict_max_version"],
+                                  }
+                              },
+                          }
+                      ]
+                  }
+              }
+          }
+          Path("adapters/zotero/updates.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Validate release tree
+        shell: bash
+        run: |
+          git diff --check
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          expected = os.environ["VERSION"]
+          checks = {
+              "pyproject": re.search(
+                  r'(?m)^version = "([^"]+)"$',
+                  Path("pyproject.toml").read_text(encoding="utf-8"),
+              ).group(1),
+              "package": re.search(
+                  r'(?m)^__version__ = "([^"]+)"$',
+                  Path("src/pdftranslate/__init__.py").read_text(encoding="utf-8"),
+              ).group(1),
+              "zotero": json.loads(
+                  Path("adapters/zotero/addon/manifest.json").read_text(encoding="utf-8")
+              )["version"],
+              "obsidian": json.loads(
+                  Path("adapters/obsidian/manifest.json").read_text(encoding="utf-8")
+              )["version"],
+              "obsidian-package": json.loads(
+                  Path("adapters/obsidian/package.json").read_text(encoding="utf-8")
+              )["version"],
+              "obsidian-lock": json.loads(
+                  Path("adapters/obsidian/package-lock.json").read_text(encoding="utf-8")
+              )["version"],
+          }
+          mismatches = {k: v for k, v in checks.items() if v != expected}
+          if mismatches:
+              raise SystemExit(f"Version mismatch: {mismatches}")
+          print(checks)
+          PY
+
+      - name: Commit release metadata
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            pyproject.toml \
+            src/pdftranslate/__init__.py \
+            adapters/zotero/addon/manifest.json \
+            adapters/zotero/updates.json \
+            adapters/obsidian/manifest.json \
+            adapters/obsidian/package.json \
+            adapters/obsidian/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Release v${VERSION}"
+            git push origin HEAD:main
+          fi
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Write checksums
+        shell: bash
+        run: |
+          cd release
+          sha256sum PDFtranslate-zotero.xpi PDFtranslate-obsidian.zip pdftranslate-* > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          gh release create "$TAG" \
+            release/PDFtranslate-zotero.xpi \
+            release/PDFtranslate-obsidian.zip \
+            release/pdftranslate-*.whl \
+            release/pdftranslate-*.tar.gz \
+            release/SHA256SUMS.txt \
+            --target "$RELEASE_SHA" \
+            --title "PDFtranslate $TAG" \
+            --notes-file RELEASE_NOTES.md
