@@ -1,7 +1,7 @@
 {
   "id": "pdftranslate",
   "name": "PDFtranslate",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "description": "Translate PDFs in Obsidian through the local PDFtranslate core and authenticated Codex CLI.",
   "author": "Dulley-Harry",

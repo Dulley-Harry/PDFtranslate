@@ -1,7 +1,19 @@
 {
   "addons": {
     "pdftranslate@dulley-harry.github.io": {
-      "updates": []
+      "updates": [
+        {
+          "version": "1.0.0",
+          "update_link": "https://github.com/Dulley-Harry/PDFtranslate/releases/download/v1.0.0/PDFtranslate-zotero.xpi",
+          "update_hash": "sha256:6c886b10632b443ccbdb8fc13d1ba0bf187ed56e25d8ddc39081f9d48ffd5d41",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "8.0",
+              "strict_max_version": "9.0.*"
+            }
+          }
+        }
+      ]
     }
   }
 }
