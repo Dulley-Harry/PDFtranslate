@@ -40,6 +40,22 @@ class ObsidianAdapterTests(unittest.TestCase):
         self.assertIn("isInside", source)
         self.assertIn("Output folder cannot leave the current Obsidian vault", source)
 
+    def test_json_parser_is_utf8_explicit_and_contract_checked(self) -> None:
+        source = (ADAPTER / "src" / "main.ts").read_text(encoding="utf-8")
+        self.assertIn("encoding: 'utf8'", source)
+        self.assertIn("parseTranslationResult(stdout, stderr)", source)
+        self.assertIn("input_pdf must be a non-empty string", source)
+        self.assertIn("mono_pdf and dual_pdf cannot both be null", source)
+        self.assertNotIn("JSON.parse(stdout.trim())", source)
+
+    def test_json_failures_include_both_process_streams(self) -> None:
+        source = (ADAPTER / "src" / "main.ts").read_text(encoding="utf-8")
+        self.assertIn("PDFtranslate JSON parse failed:", source)
+        self.assertIn("PDFtranslate JSON contract violation:", source)
+        self.assertIn("streamDiagnostic('stdout', stdout)", source)
+        self.assertIn("streamDiagnostic('stderr', stderr)", source)
+        self.assertIn("Recovered final JSON object from noisy stdout", source)
+
 
 if __name__ == "__main__":
     unittest.main()

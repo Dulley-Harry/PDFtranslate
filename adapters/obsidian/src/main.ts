@@ -35,6 +35,94 @@ const DEFAULT_SETTINGS: PDFtranslateSettings = {
 };
 
 const MAX_PROCESS_OUTPUT = 4 * 1024 * 1024;
+const MAX_DIAGNOSTIC_TEXT = 1200;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function diagnosticTail(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '<empty>';
+  const tail = trimmed.slice(-MAX_DIAGNOSTIC_TEXT);
+  const prefix = trimmed.length > tail.length ? '…' : '';
+  return JSON.stringify(`${prefix}${tail}`);
+}
+
+function streamDiagnostic(label: string, value: string): string {
+  const bytes = new TextEncoder().encode(value).length;
+  return `${label} (${bytes} bytes): ${diagnosticTail(value)}`;
+}
+
+function translationResultContractError(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return 'result must be an object';
+  }
+
+  const result = value as Record<string, unknown>;
+  if (typeof result.input_pdf !== 'string' || result.input_pdf.length === 0) {
+    return 'input_pdf must be a non-empty string';
+  }
+  for (const field of ['mono_pdf', 'dual_pdf'] as const) {
+    const output = result[field];
+    if (output !== null && (typeof output !== 'string' || output.length === 0)) {
+      return `${field} must be a non-empty string or null`;
+    }
+  }
+  if (result.mono_pdf === null && result.dual_pdf === null) {
+    return 'mono_pdf and dual_pdf cannot both be null';
+  }
+  return null;
+}
+
+function parseTranslationResult(stdout: string, stderr: string): TranslationResult {
+  const normalized = stdout.replace(/^\uFEFF/, '').trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(normalized) as unknown;
+  } catch (strictError) {
+    const lines = normalized
+      .split(/\r?\n|\r/)
+      .map((line) => line.replace(/^\uFEFF/, '').trim())
+      .filter((line) => line.startsWith('{') && line.endsWith('}'));
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      try {
+        const candidate = JSON.parse(lines[index]) as unknown;
+        if (translationResultContractError(candidate) === null) {
+          console.warn(
+            '[PDFtranslate] Recovered final JSON object from noisy stdout.',
+            streamDiagnostic('stdout', stdout),
+            streamDiagnostic('stderr', stderr),
+          );
+          return candidate as TranslationResult;
+        }
+      } catch {
+        // Keep looking for the final complete JSON-line contract.
+      }
+    }
+
+    throw new Error(
+      [
+        `PDFtranslate JSON parse failed: ${errorMessage(strictError)}`,
+        streamDiagnostic('stdout', stdout),
+        streamDiagnostic('stderr', stderr),
+      ].join('\n'),
+    );
+  }
+
+  const contractError = translationResultContractError(parsed);
+  if (contractError !== null) {
+    throw new Error(
+      [
+        `PDFtranslate JSON contract violation: ${contractError}`,
+        streamDiagnostic('stdout', stdout),
+        streamDiagnostic('stderr', stderr),
+      ].join('\n'),
+    );
+  }
+  return parsed as TranslationResult;
+}
 
 function runExecutable(
   command: string,
@@ -48,6 +136,7 @@ function runExecutable(
         windowsHide: true,
         maxBuffer: MAX_PROCESS_OUTPUT,
         env: process.env,
+        encoding: 'utf8',
       },
       (error, stdout, stderr) => {
         const stdoutText = String(stdout ?? '');
@@ -189,13 +278,8 @@ export default class PDFtranslatePlugin extends Plugin {
         '--json',
       ];
 
-      const { stdout } = await runExecutable(executable, args);
-      let result: TranslationResult;
-      try {
-        result = JSON.parse(stdout.trim()) as TranslationResult;
-      } catch {
-        throw new Error('PDFtranslate returned invalid JSON.');
-      }
+      const { stdout, stderr } = await runExecutable(executable, args);
+      const result = parseTranslationResult(stdout, stderr);
 
       const outputs = [result.dual_pdf, result.mono_pdf].filter(
         (value): value is string => typeof value === 'string' && value.length > 0,
