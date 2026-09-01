@@ -23,9 +23,11 @@ batched `codex exec`
  translated / bilingual PDF
 ```
 
-## Current status
+## Release status
 
-The MVP architecture is implemented:
+**v1.0.0** is the first stable release of PDFtranslate.
+
+The release includes:
 
 - `pdftranslate-pdf` — end-to-end PDF translation command.
 - `pdftranslate-bridge` — loopback OpenAI-compatible service backed by the authenticated local Codex CLI.
@@ -36,6 +38,15 @@ The MVP architecture is implemented:
 The PDF command defaults to bridge mode: PDFMathTranslate Next can issue several concurrent segment requests while PDFtranslate batches them into fewer `codex exec` calls.
 
 PDFtranslate interoperates with PDFMathTranslate Next/BabelDOC instead of vendoring or rewriting their PDF layout engine.
+
+## Release downloads
+
+GitHub Releases provides the installable v1.0.0 assets:
+
+- `PDFtranslate-zotero.xpi` — Zotero plugin.
+- `PDFtranslate-obsidian.zip` — Obsidian desktop plugin.
+- Python wheel and source distribution.
+- `SHA256SUMS.txt` — release artifact checksums.
 
 ## Security boundary
 
@@ -177,6 +188,8 @@ PDFTRANSLATE_OUTPUT_MODE=mono
 PDFTRANSLATE_OUTPUT_MODE=both
 ```
 
+v1.0.0 declares compatibility with Zotero 8.x and 9.0.x. Zotero 10 is intentionally not declared compatible until it has been validated in a real Zotero 10 desktop session.
+
 See `adapters/zotero/README.md` for the current adapter scope.
 
 ## Obsidian adapter
@@ -189,7 +202,7 @@ Build locally:
 
 ```bash
 cd adapters/obsidian
-npm install
+npm ci
 npm run build
 ```
 
@@ -240,7 +253,7 @@ POST /v1/chat/completions
 
 ## Validation status
 
-Automated CI currently covers:
+Automated CI covers:
 
 - Python 3.11 / 3.12 / 3.13 core tests;
 - Codex bridge batching/ID matching with a fake backend;
@@ -249,7 +262,14 @@ Automated CI currently covers:
 - Obsidian manifest, path confinement, no-shell/no-credential invariants;
 - Obsidian TypeScript type-check and production esbuild on Node 22.
 
-CI intentionally does **not** receive a personal Codex login or subscription credential. Therefore the remaining validation boundary is a real local smoke test on a machine where Codex CLI is already signed in, followed by one Zotero and one Obsidian end-to-end test.
+The v1.0 line has also completed real Windows end-to-end validation with an authenticated Codex Desktop CLI:
+
+- CLI text translation: PASS;
+- bilingual scientific PDF generation: PASS;
+- Zotero 9.0.6 install, right-click translation, and translated attachment import: PASS;
+- Obsidian desktop install, translation into the active vault, and opening the generated bilingual PDF: PASS.
+
+CI intentionally does **not** receive a personal Codex login or subscription credential.
 
 ## Repository layout
 
